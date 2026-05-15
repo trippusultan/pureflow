@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { Play, ChevronDown, Menu, ArrowRight } from 'lucide-react'
+import HeroCanvas from './HeroCanvas'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -31,11 +32,91 @@ const FAQS = [
   { q: 'What is your warranty policy?', a: 'Every PureFlow One comes with a 2-year limited warranty covering manufacturing defects. Premium plans extend to 5 years.' },
 ]
 
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const chevronRef = useRef<SVGSVGElement>(null)
+  const tl = useRef<gsap.core.Timeline | null>(null)
+
+  const toggle = () => {
+    const el = ref.current
+    const chevron = chevronRef.current
+    if (!el) return
+    const details = el.querySelector('details') as HTMLDetailsElement | null
+    if (!details) return
+
+    if (tl.current) tl.current.kill()
+    tl.current = gsap.timeline()
+
+    if (details.open) {
+      // close: animate height + chevron together
+      const cur = el.style.height
+      el.style.height = cur || `${el.scrollHeight}px`
+      el.style.overflow = 'hidden'
+      tl.current
+        .to(chevron, { rotation: 0, duration: 0.3, ease: 'power2.in' }, 0)
+        .to(el,         { height: 0, duration: 0.38, ease: 'power2.in' }, 0)
+    } else {
+      // open: animate height + chevron together from 0
+      const natural = el.scrollHeight || 200
+      el.style.height = '0px'
+      el.style.overflow = 'hidden'
+      el.style.transition = 'none'
+      details.open = true
+      void el.offsetHeight // reflow
+      tl.current
+        .to(chevron, { rotation: 180, duration: 0.42, ease: 'power3.out' }, 0)
+        .to(el,      { height: natural, duration: 0.42, ease: 'power3.out', onComplete: () => { el.style.height = ''; el.style.overflow = ''; tl.current = null } }, 0)
+    }
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="faq-item border-b border-black/8 py-6 px-4 open:bg-black/[0.015]"
+    >
+      <details onClick={toggle}>
+        <summary className="list-none cursor-pointer text-sm font-medium flex items-center justify-between">
+          {q}
+          <ChevronDown ref={chevronRef} size={16} className="text-black/30" />
+        </summary>
+        <div className="faq-body">
+          <p className="mt-3 text-sm text-black/40 leading-relaxed">{a}</p>
+        </div>
+      </details>
+    </div>
+  )
+}
+
 export default function App() {
   const heroRef = useRef<HTMLElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const heroCanvasRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLElement>(null)
+  const navPillRef = useRef<HTMLDivElement>(null)
   const heroTxtRef = useRef<HTMLDivElement>(null)
+  const statsRef = useRef<HTMLDivElement>(null)
+
+  // ---- Nav pill hover highlight ----
+  useEffect(() => {
+    const nav = navRef.current
+    const pill = navPillRef.current
+    if (!nav || !pill) return
+    const links = nav.querySelectorAll<HTMLAnchorElement>('.nav-link')
+
+    const movePill = (link: HTMLAnchorElement) => {
+      gsap.to(pill, {
+        left: link.offsetLeft - 4,
+        width: link.offsetWidth + 8,
+        duration: 0.35,
+        ease: 'power2.out',
+      })
+    }
+
+    links.forEach(link => {
+      link.addEventListener('mouseenter', () => movePill(link))
+    })
+    nav.addEventListener('mouseleave', () => movePill(links[0]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -57,14 +138,40 @@ export default function App() {
         )
       })
 
-      // --- Parallax video ---
-      if (videoRef.current) {
-        gsap.to(videoRef.current, {
-          yPercent: 20,
+      // --- Hero canvas parallax: canvas drifts upward slower than scroll (depth) ---
+      gsap.fromTo(heroCanvasRef.current,
+        { y: '-10%' },
+        {
+          y: '10%',
           ease: 'none',
-          scrollTrigger: { trigger: heroRef.current, start: 'top top', end: 'bottom top', scrub: true }
+          scrollTrigger: {
+            trigger: heroRef.current,
+            start: 'top top',
+            end: 'bottom top',
+            scrub: 1.5,
+          },
+        }
+      )
+
+      // --- Stats counter-up (Science section) ---
+      const statEls = statsRef.current?.querySelectorAll('.stat-num')
+      if (statEls?.length) {
+        statEls.forEach((el) => {
+          const target = parseFloat((el as HTMLElement).dataset.target || '0')
+          const decimals = (el as HTMLElement).dataset.decimals || '0'
+          const obj = { val: 0 }
+          gsap.to(obj, {
+            val: target,
+            duration: 1.8,
+            ease: 'power2.out',
+            scrollTrigger: { trigger: statsRef.current, start: 'top 80%', once: true },
+            onUpdate() {
+              el.textContent = decimals === '0' ? String(Math.round(obj.val)) : obj.val.toFixed(1)
+            },
+          })
         })
       }
+
 
       // --- Fade-zone: hide hero content below the fold ---
       gsap.to(heroRef.current, {
@@ -117,7 +224,7 @@ export default function App() {
         ref={navRef}
         className="fixed top-6 left-0 right-0 z-50 flex items-center justify-center px-4"
       >
-        <div className="flex items-center gap-2 px-6 py-3 rounded-full bg-white/80 backdrop-blur-xl border border-black/5 shadow-[0_4px_30px_rgba(0,0,0,0.05)]">
+        <div className="relative flex items-center gap-2 px-6 py-3 rounded-full bg-white/80 backdrop-blur-xl border border-black/5 shadow-[0_4px_30px_rgba(0,0,0,0.05)]">
           <span className="font-serif text-xl font-bold tracking-tight pr-4 border-r border-black/10">
             PureFlow
           </span>
@@ -125,7 +232,7 @@ export default function App() {
             <a
               key={link.label}
               href={link.href}
-              className="text-sm text-black/50 hover:text-black transition-colors duration-300 px-1"
+              className="nav-link text-sm text-black/50 hover:text-black transition-colors duration-300 px-1"
             >
               {link.label}
             </a>
@@ -141,6 +248,12 @@ export default function App() {
               <Menu size={16} className="text-black/40" />
             </button>
           </div>
+          {/* sliding pill highlight behind nav links */}
+          <div
+            ref={navPillRef}
+            className="absolute top-1 bottom-1 -z-10 rounded-full bg-brand-accent/8 pointer-events-none"
+            aria-hidden="true"
+          />
         </div>
       </nav>
       {/* ============================ HERO ============================== */}
@@ -149,19 +262,12 @@ export default function App() {
         id="home"
         className="relative h-[100vh] overflow-hidden bg-brand-dark"
       >
-        {/* Video BG */}
-        <video
-          ref={videoRef}
-          className="absolute inset-0 w-full h-[120%] object-cover"
-          autoPlay muted loop playsInline
-          src={
-            'https://assets.mixkit.co/videos/preview/mixkit-flying-over-the-clouds-1701-large.mp4'
-          }
-        />
-        {/* Overlay */}
-        <div className="absolute inset-0 bg-brand-dark/40" />
-        <div className="absolute inset-0 bg-gradient-to-b from-brand-dark/20 via-transparent to-brand-dark/80" />
-
+        {/* Cinematic animated jet-sky canvas with parallax wrapper */}
+        <div ref={heroCanvasRef} className="absolute inset-0 will-change-transform">
+          <HeroCanvas />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-brand-dark/15 via-transparent/10 to-brand-dark/65" />
+      
         {/* Hero text */}
         <div
           ref={heroTxtRef}
@@ -222,24 +328,12 @@ export default function App() {
             ))}
           </div>
 
-          {/* FAQ */}
+          {/* FAQ — smooth spring accordion */}
           <div className="section-reveal">
             <h3 className="font-serif text-3xl italic text-center mb-10">Frequently Asked Questions</h3>
             <div className="grid md:grid-cols-2 gap-0 divide-x divide-black/8">
               {FAQS.map((f) => (
-                <details
-                  key={f.q}
-                  className="group border-b border-black/8 py-6 px-4 open:bg-black/[0.015] transition-colors"
-                >
-                  <summary className="list-none cursor-pointer text-sm font-medium flex items-center justify-between">
-                    {f.q}
-                    <ChevronDown
-                      size={16}
-                      className="text-black/30 group-open:rotate-180 transition-transform"
-                    />
-                  </summary>
-                  <p className="mt-3 text-sm text-black/40 leading-relaxed">{f.a}</p>
-                </details>
+                <FaqItem key={f.q} q={f.q} a={f.a} />
               ))}
             </div>
           </div>
@@ -301,22 +395,22 @@ export default function App() {
           />
         </div>
 
-        <div className="relative z-10 max-w-4xl mx-auto section-reveal">
+        <div ref={statsRef} className="relative z-10 max-w-4xl mx-auto section-reveal">
           <p className="text-xs tracking-[0.3em] uppercase text-white/35 mb-4">The Science</p>
           <h2 className="font-serif text-4xl sm:text-6xl italic mb-10">
             Purification that<br />defies physics.
           </h2>
           <div className="grid sm:grid-cols-3 gap-6">
             {[
-              { n: '0.3µm', lbl: 'Particle Filtration — H13 HEPA captures particles down to 0.3 microns.' },
-              { n: '460m³/h', lbl: 'CADR — Clean air delivery rate outperforms units twice the size.' },
-              { n: '0dB', lbl: 'Whisper Mode — Near-silent PRD drive, acoustically tuned.' },
+              { num: 0.3, unit: 'µm', decimals: '1', lbl: 'Particle Filtration — H13 HEPA captures particles down to 0.3 microns.' },
+              { num: 460, unit: 'm³/h', decimals: '0', lbl: 'CADR — Clean air delivery rate outperforms units twice the size.' },
+              { num: 0,   unit: 'dB',  decimals: '0', lbl: 'Whisper Mode — Near-silent PRD drive, acoustically tuned.' },
             ].map((s) => (
               <div
-                key={s.n}
+                key={s.unit}
                 className="border border-white/10 rounded-2xl bg-white/[0.035] px-6 py-8 backdrop-blur-xs"
               >
-                <p className="font-serif text-4xl italic mb-3 text-white/80">{s.n}</p>
+                <p className="font-serif text-4xl italic mb-3 text-white/80"><span className="stat-num" data-target={s.num} data-decimals={s.decimals}>0</span>{s.unit}</p>
                 <p className="text-sm text-white/35 leading-relaxed">{s.lbl}</p>
               </div>
             ))}
@@ -381,7 +475,7 @@ export default function App() {
             <input
               type="email"
               placeholder="your@email.com"
-              className="px-6 py-3.5 rounded-full bg-white/10 border border-white/10 text-white placeholder:text-white/25 text-sm outline-none focus:border-white/30 transition-colors w-full sm:w-72"
+              className="px-6 py-3.5 rounded-full bg-white/10 border border-white/10 text-white placeholder:text-white/25 text-sm outline-none focus:ring-2 focus:ring-white/15 focus:border-white/40 transition-all w-full sm:w-72"
             />
             <button className="px-7 py-3.5 rounded-full bg-white text-black font-medium hover:shadow-2xl hover:scale-[1.03] transition-[transform,box-shadow] duration-300">
               Get in Touch
